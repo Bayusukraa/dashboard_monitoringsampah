@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi Smart Trash Monitoring</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+
+body{
+  font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
+  background:#e8f8ee;
+  min-height:100vh;
+  padding:20px;
+}
+
+.container{max-width:1400px;margin:auto}
+
+/* ===== HEADER GRID ===== */
+.header-bar{
+  position:relative;
+  background:white;
+  padding:20px;
+  border-radius:15px;
+  box-shadow:0 8px 20px rgba(0,0,0,.08);
+  margin-bottom:30px;
+}
+
+.header-content{
+  text-align:center;
+  color:#14532d;
+  width:100%;
+}
+
+/* CLOSE BUTTON - Pojok Kanan Atas */
+.close-btn{
+  position:absolute;
+  top:15px;
+  right:15px;
+  background:#e74c3c;
+  border:none;
+  color:white;
+  width:40px;
+  height:40px;
+  border-radius:50%;
+  font-size:1.5em;
+  font-weight:bold;
+  cursor:pointer;
+  transition:.25s;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow:0 2px 10px rgba(231,76,60,.3);
+}
+.close-btn:hover{
+  background:#c0392b;
+  transform:scale(1.1);
+}
+
+h1{font-size:2.3em;margin-bottom:10px}
+
+.connection-status{
+  display:inline-block;
+  padding:6px 18px;
+  border-radius:20px;
+  font-weight:bold;
+  color:white;
+  margin-top:8px
+}
+
+.status-disconnected{background:#e74c3c}
+.status-connecting{background:#f39c12}
+.status-connected{background:#27ae60}
+
+/* ===== DASHBOARD ===== */
+.stats-overview{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+gap:15px;margin-bottom:20px
+}
+
+.stat-card{
+background:white;
+border-radius:12px;
+padding:20px;
+box-shadow:0 8px 20px rgba(0,0,0,.08);
+text-align:center
+}
+
+.stat-value{font-size:2.5em;font-weight:bold}
+
+.main-content{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:20px
+}
+
+@media(max-width:968px){
+.main-content{grid-template-columns:1fr}
+}
+
+.map-container,.devices-list{
+background:white;
+border-radius:15px;
+padding:20px;
+box-shadow:0 10px 30px rgba(0,0,0,.1)
+}
+
+#map{height:500px;border-radius:10px}
+
+.device-card{
+background:#f8f9fa;
+border-radius:10px;
+padding:15px;
+margin-bottom:12px;
+border-left:5px solid
+}
+
+.device-kosong{border-color:#27ae60}
+.device-hampir{border-color:#f39c12}
+.device-penuh{border-color:#e74c3c}
+.device-offline{border-color:#95a5a6}
+
+.device-header{
+display:flex;
+justify-content:space-between;
+align-items:center;
+}
+
+.device-name{font-weight:bold;font-size:1.1em}
+
+.device-status-badge{
+padding:4px 12px;
+border-radius:12px;
+font-size:.75em;
+font-weight:bold;
+color:white
+}
+
+.badge-kosong{background:#27ae60}
+.badge-hampir{background:#f39c12}
+.badge-penuh{background:#e74c3c}
+.badge-offline{background:#95a5a6}
+
+.progress-mini{
+width:100%;
+height:8px;
+background:#e0e0e0;
+border-radius:4px;
+overflow:hidden;
+margin-top:8px
+}
+
+.progress-fill{height:100%}
+
+.timestamp{
+text-align:center;
+color:#14532d;
+margin-top:20px
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<!-- ===== HEADER (Tombol X di Pojok) ===== -->
+<header class="header-bar">
+  <button class="close-btn" onclick="goBack()">✕</button>
+  
+  <div class="header-content">
+    <h1>🗑️ Multi Smart Trash Monitoring</h1>
+    <div id="connectionStatus" class="connection-status status-disconnected">
+      DISCONNECTED
+    </div>
+  </div>
+</header>
+
+<div class="stats-overview">
+<div class="stat-card"><div id="totalDevices" class="stat-value">0</div>Total</div>
+<div class="stat-card"><div id="kosongCount" class="stat-value">0</div>Kosong</div>
+<div class="stat-card"><div id="hampirCount" class="stat-value">0</div>Hampir</div>
+<div class="stat-card"><div id="penuhCount" class="stat-value">0</div>Penuh</div>
+<div class="stat-card"><div id="offlineCount" class="stat-value">0</div>Offline</div>
+</div>
+
+<div class="main-content">
+<div class="map-container">
+<h3>🗺️ Peta Lokasi</h3>
+<div id="map"></div>
+</div>
+
+<div class="devices-list">
+<h3>📋 Daftar Perangkat</h3>
+<div id="devicesList"></div>
+</div>
+</div>
+
+<div class="timestamp">
+System Time: <span id="systemTime"></span>
+</div>
+
+</div>
+
+<script>
+/* ===== BACK URL ===== */
+const BACK_URL = "index.html";
+function goBack(){ window.location.href = BACK_URL; }
+
+/* ===== DEVICE ===== */
+const devices = [
+ { name:"Tong Parkir A", topic:"smarttrash/device1/data", lat:-8.6705, lng:115.2126 },
+ { name:"Tong Parkir B", topic:"smarttrash/device2/data", lat:-8.6712, lng:115.2131 }
+];
+
+let devicesData = {};
+let markers = {};
+let map;
+
+/* ===== MAP ===== */
+map = L.map("map").setView([-8.6705,115.2126],15);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+
+devices.forEach(d=>{
+ markers[d.topic] = L.circleMarker([d.lat,d.lng],{
+  radius:10,fillColor:"#95a5a6",color:"#fff",weight:2,fillOpacity:.9
+ }).addTo(map).bindPopup(d.name);
+});
+
+/* ===== RENDER ===== */
+function render(){
+ let k=0,h=0,p=0,o=0;
+ const list=document.getElementById("devicesList");
+ list.innerHTML="";
+
+ devices.forEach(d=>{
+  const data=devicesData[d.topic];
+  // Tidak ada timer untuk lastUpdate - langsung cek apakah ada data
+  const offline=!data;
+
+  let cls="device-offline",badge="badge-offline",text="OFFLINE",persen=0;
+
+  if(!offline){
+   persen=data.persentase;
+   if(data.status==="KOSONG"){cls="device-kosong";badge="badge-kosong";text="KOSONG";k++}
+   else if(data.status==="HAMPIR PENUH"){cls="device-hampir";badge="badge-hampir";text="HAMPIR";h++}
+   else{cls="device-penuh";badge="badge-penuh";text="PENUH";p++}
+  } else o++;
+
+  const el=document.createElement("div");
+  el.className=`device-card ${cls}`;
+  el.innerHTML=`
+   <div class="device-header">
+    <div class="device-name">${d.name}</div>
+    <div class="device-status-badge ${badge}">${text}</div>
+   </div>
+   <div class="progress-mini">
+    <div class="progress-fill" style="width:${persen}%;background:${persen<30?"#27ae60":persen<70?"#f39c12":"#e74c3c"}"></div>
+   </div>`;
+  list.appendChild(el);
+ });
+
+ totalDevices.textContent=devices.length;
+ kosongCount.textContent=k;
+ hampirCount.textContent=h;
+ penuhCount.textContent=p;
+ offlineCount.textContent=o;
+}
+
+/* ===== MQTT ===== */
+const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt",{keepalive:60,reconnectPeriod:3000});
+
+client.on("connect",()=>{
+ connectionStatus.className="connection-status status-connected";
+ connectionStatus.textContent="CONNECTED";
+ client.subscribe("smarttrash/+/data");
+});
+
+client.on("reconnect",()=>{
+ connectionStatus.className="connection-status status-connecting";
+ connectionStatus.textContent="RECONNECTING...";
+});
+
+client.on("close",()=>{
+ connectionStatus.className="connection-status status-disconnected";
+ connectionStatus.textContent="DISCONNECTED";
+});
+
+client.on("message",(topic,msg)=>{
+ const data = JSON.parse(msg);
+ // Tidak menyimpan lastUpdate lagi
+ devicesData[topic] = data;
+
+ const marker = markers[topic];
+ if(marker){
+  marker.setStyle({
+   fillColor:
+    data.status==="KOSONG"?"#27ae60":
+    data.status==="HAMPIR PENUH"?"#f39c12":"#e74c3c"
+  });
+ }
+ render();
+});
+
+setInterval(()=>systemTime.textContent=new Date().toLocaleTimeString("id-ID"),1000);
+setInterval(render,3000);
+</script>
+
+</body>
+</html>
