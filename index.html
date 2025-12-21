@@ -506,7 +506,6 @@
 
       <div id="historyLoading">⏳ Memuat riwayat dari Firebase...</div>
 
-      <!-- Wrapper penting untuk responsif tabel -->
       <div class="table-wrapper">
         <table class="history-table" id="historyTable" style="display:none">
           <thead>
@@ -523,16 +522,14 @@
         </table>
       </div>
 
-      <div id="noHistory" class="no-data" style="display:none">Belum ada riwayat pengukuran.</div>
+      <div id="noHistory" class="no-data" style="display:none">Belum ada riwayat.</div>
     </div>
   </div>
 
   <div class="timestamp">🕐 System Time: <span id="systemTime"></span></div>
 </div>
 
-<!-- Script tetap sama -->
 <script>
-// Script Anda yang sebelumnya (tidak ada perubahan fungsionalitas)
 const firebaseConfig = {
   apiKey: "AIzaSyAD4VAIS-pFsgZXaEScz21hYvMyn9Wtgow",
   authDomain: "samdbal.firebaseapp.com",
@@ -559,9 +556,17 @@ let allHistoryData = [];
 
 const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt", {keepalive:60, reconnectPeriod:3000});
 
-function isInSleepTime() {
+const WITA_TIMEZONE = 'Asia/Makassar';
+
+function getWitaHour() {
   const now = new Date();
-  const hour = now.getHours();
+  const witaDate = now.toLocaleString('en-US', { timeZone: WITA_TIMEZONE });
+  const witaHour = new Date(witaDate).getHours();
+  return witaHour;
+}
+
+function isInSleepTime() {
+  const hour = getWitaHour();
   return hour >= 12 && hour < 18;
 }
 
@@ -590,9 +595,10 @@ function toggleManualSleep() {
 
 function updateAutoSleepDisplay() {
   const badge = document.getElementById('autoSleepStatus');
+  const inSleepTime = isInSleepTime();
   if (autoSleepMode) {
-    badge.className = isInSleepTime() ? 'device-mode-badge mode-sleep' : 'device-mode-badge mode-active';
-    badge.textContent = isInSleepTime() ? '😴 SLEEP OTOMATIS' : '🟢 AKTIF';
+    badge.className = inSleepTime ? 'device-mode-badge mode-sleep' : 'device-mode-badge mode-active';
+    badge.textContent = inSleepTime ? '😴 SLEEP OTOMATIS' : '🟢 AKTIF';
   } else {
     badge.className = 'device-mode-badge mode-manual-off';
     badge.textContent = '🔴 NONAKTIF';
@@ -669,7 +675,8 @@ client.on("message", (topic, msg) => {
 });
 
 setInterval(() => {
-  document.getElementById('systemTime').textContent = new Date().toLocaleString('id-ID');
+  const witaTime = new Date().toLocaleString('id-ID', { timeZone: WITA_TIMEZONE });
+  document.getElementById('systemTime').textContent = witaTime;
   updateAutoSleepDisplay();
   render();
 }, 1000);
